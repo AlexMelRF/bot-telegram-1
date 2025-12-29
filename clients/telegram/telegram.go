@@ -1,6 +1,7 @@
-package telegram ////part 3, 15:00
+package telegram
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,7 +20,12 @@ type Client struct {
 	client   http.Client
 }
 
-func New(host, token string) Client {
+const (
+	getUpdatesMethod  = "getUpdates"
+	sendMessageMethod = "sendMessage"
+)
+
+func New(host string, token string) Client {
 	return Client{
 		host:     host,
 		basePath: newBasePath(token),
@@ -35,10 +41,38 @@ func (c *Client) Updates(offset int, limit int) ([]Update, error) {
 	q := url.Values{}
 	q.Add("offset", strconv.Itoa(offset))
 	q.Add("limit", strconv.Itoa(limit))
+
+	data, err := c.doRequest(getUpdatesMethod, q)
+	if err != nil {
+		return nil, err
+	}
+
+	var result UpdatesResponse
+
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Result, err
+}
+
+func (c *Client) SendMessage(chatID int, text string) error {
+	q := url.Values{}
+	q.Add("chat_id", strconv.Itoa(chatID))
+	q.Add("text", text)
+
+	_, err := c.doRequest(sendMessageMethod, q)
+	if err != nil {
+		return e.Wrap("can not send message", err)
+	}
+
+	return nil
 }
 
 func (c *Client) doRequest(method string, query url.Values) (data []byte, err error) {
-	defer func() { err = e.WrapIfErr("can not do request", err) }()
+	defer func() {
+		err = e.WrapIfErr("can not do request", err)
+	}()
 
 	u := url.URL{
 		Scheme: "https",
@@ -58,7 +92,9 @@ func (c *Client) doRequest(method string, query url.Values) (data []byte, err er
 		return nil, err
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -66,8 +102,4 @@ func (c *Client) doRequest(method string, query url.Values) (data []byte, err er
 	}
 
 	return body, nil
-}
-
-func (c *Client) SendMessage() {
-
 }
